@@ -51,27 +51,65 @@ class Config(BaseModel):
 
 def load_config(config_path: Optional[Path] = None) -> Config:
     """Load configuration from YAML file."""
+    import os
+    import re
+
+    # Load .env.local first
+    env_file = Path.cwd() / ".env.local"
+    if not env_file.exists():
+        # Try project root
+        env_file = Path(__file__).resolve().parent.parent.parent.parent / ".env.local"
+
+    if env_file.exists():
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ[key] = value
+
     if config_path is None:
-        # Try to find project root (where pyproject.toml exists)
-        current = Path(__file__).resolve().parent
-        while current != current.parent:
-            if (current / "pyproject.toml").exists():
-                config_path = current / "config" / "config.yaml"
+        # Try multiple locations
+        possible_paths = [
+            # From src directory (where __main__.py runs)
+            Path(__file__).resolve().parent.parent.parent.parent / "config" / "config.yaml",
+            # From project root
+            Path.cwd() / "config" / "config.yaml",
+            # From src parent
+            Path.cwd().parent / "config" / "config.yaml",
+        ]
+
+        for path in possible_paths:
+            if path.exists():
+                config_path = path
                 break
-            current = current.parent
 
         if config_path is None:
-            # Fallback to current working directory
-            config_path = Path.cwd() / "config" / "config.yaml"
+            # Last resort: try to find by walking up
+            current = Path(__file__).resolve().parent
+            while current != current.parent:
+                config_candidate = current / "config" / "config.yaml"
+                if config_candidate.exists():
+                    config_path = config_candidate
+                    break
+                current = current.parent
 
-    if not config_path.exists():
+    if config_path is None or not config_path.exists():
         raise FileNotFoundError(
-            f"Config file not found: {config_path}\n"
+            f"Config file not found.\n"
             f"Working directory: {Path.cwd()}\n"
             f"Please create config/config.yaml from config/config.yaml.example"
         )
 
     with open(config_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        content = f.read()
+
+    # Replace environment variables ${VAR_NAME}
+    def replace_env(match):
+        var_name = match.group(1)
+        return os.getenv(var_name, match.group(0))
+
+    content = re.sub(r"\$\{([^}]+)\}", replace_env, content)
+    data = yaml.safe_load(content)
 
     return Config(**data)
