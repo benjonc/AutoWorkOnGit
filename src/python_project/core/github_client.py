@@ -1,19 +1,152 @@
 """GitHub API integration for issue and PR management."""
 
+import logging
 from typing import Optional
 
-from github import Github, Issue, PullRequest
+from github import Github, Issue, PullRequest, Repository
+from github.GithubException import BadCredentialsException, UnknownObjectException
 
 from python_project.core.config import GitHubConfig
 
+logger = logging.getLogger(__name__)
+
 
 class GitHubClient:
-    """GitHub API client wrapper."""
+    """GitHub API client wrapper with auto-create repository support."""
 
-    def __init__(self, config: GitHubConfig):
+    def __init__(self, config: GitHubConfig, auto_create: bool = True):
+        """
+        Initialize GitHub client.
+
+        Args:
+            config: GitHub configuration
+            auto_create: Automatically create repository if it doesn't exist
+        """
         self.config = config
         self.client = Github(config.token)
-        self.repo = self.client.get_repo(f"{config.repo_owner}/{config.repo_name}")
+        self.repo: Optional[Repository.Repository] = None
+
+        # Verify authentication
+        try:
+            user = self.client.get_user()
+            logger.info(f"Authenticated as GitHub user: {user.login}")
+        except BadCredentialsException:
+            raise ValueError(
+                "GitHub authentication failed. Please check your GITHUB_TOKEN."
+            )
+
+        # Get or create repository
+        self.repo = self._get_or_create_repository(auto_create=auto_create)
+
+    def _get_or_create_repository(
+        self, auto_create: bool = True
+    ) -> Repository.Repository:
+        """
+        Get existing repository or create new one.
+
+        Args:
+            auto_create: Create repository if it doesn't exist
+
+        Returns:
+            Repository object
+
+        Raises:
+            ValueError: If repository doesn't exist and auto_create is False
+        """
+        repo_full_name = f"{self.config.repo_owner}/{self.config.repo_name}"
+
+        # Try to get existing repository
+        try:
+            repo = self.client.get_repo(repo_full_name)
+            logger.info(f"Repository found: {repo.full_name}")
+            logger.info(f"  URL: {repo.html_url}")
+            logger.info(f"  Stars: {repo.stargazers_count}, Forks: {repo.forks_count}")
+            return repo
+        except UnknownObjectException:
+            # Repository doesn't exist
+            if not auto_create:
+                raise ValueError(
+                    f"Repository not found: {repo_full_name}\n"
+                    f"Set auto_create=True to create it automatically."
+                )
+
+            # Create repository
+            logger.warning(f"Repository not found: {repo_full_name}")
+            logger.info("Creating new repository...")
+
+            return self._create_repository()
+
+    def _create_repository(self) -> Repository.Repository:
+        """
+        Create a new GitHub repository.
+
+        Returns:
+            Created repository object
+        """
+        user = self.client.get_user()
+        user_login = user.login
+
+        # Check if we're creating for the authenticated user or an org
+        is_user_repo = user_login == self.config.repo_owner
+
+        if is_user_repo:
+            # Create for authenticated user
+            repo = user.create_repo(
+                name=self.config.repo_name,
+                description="Autonomous workflow system - managed by multi-agent AI",
+                private=False,
+                has_issues=True,
+                has_projects=True,
+                has_wiki=True,
+                auto_init=False,
+            )
+        else:
+            # Create for organization
+            try:
+                org = self.client.get_organization(self.config.repo_owner)
+                repo = org.create_repo(
+                    name=self.config.repo_name,
+                    description="Autonomous workflow system - managed by multi-agent AI",
+                    private=False,
+                    has_issues=True,
+                    has_projects=True,
+                    has_wiki=True,
+                    auto_init=False,
+                )
+            except UnknownObjectException:
+                raise ValueError(
+                    f"Organization not found: {self.config.repo_owner}\n"
+                    f"Make sure you have access to this organization."
+                )
+
+        logger.info(f"Repository created: {repo.full_name}")
+        logger.info(f"  URL: {repo.html_url}")
+
+        # Create default branch if needed
+        self._ensure_default_branch(repo)
+
+        return repo
+
+    def _ensure_default_branch(self, repo: Repository.Repository) -> None:
+        """Ensure the default branch exists (create README if repo is empty)."""
+        try:
+            # Try to get the default branch
+            default_branch = repo.default_branch
+            logger.info(f"Default branch: {default_branch}")
+        except Exception:
+            # Repository is empty, create README
+            logger.info("Repository is empty, creating initial commit...")
+            try:
+                repo.create_file(
+                    path="README.md",
+                    message="Initial commit",
+                    content=f"# {repo.name}\n\n{repo.description or 'Repository for autonomous workflow system'}\n",
+                    branch="main",
+                )
+                logger.info("Created README.md with initial commit")
+            except Exception as e:
+                logger.warning(f"Could not create initial commit: {e}")
+                logger.info("You may need to initialize the repository manually")
 
     # ==================== Issue Management ====================
 
