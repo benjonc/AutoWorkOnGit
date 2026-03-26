@@ -1,0 +1,51 @@
+# Example Configuration File
+# Copy this to config.yaml and fill in your details
+
+# GitHub Configuration
+github:
+  # Your GitHub Personal Access Token
+  # Get it from: https://github.com/settings/tokens
+  # Required scopes: repo, write:issues, write:pull_requests
+  token: ${GITHUB_TOKEN}
+
+  # Repository owner (your GitHub username or organization)
+  repo_owner: "your-username"
+
+  # Repository name
+  repo_name: "your-repo"
+
+  # Base branch for PRs
+  base_branch: "main"
+
+# Claude Code Configuration
+claude:
+  # Anthropic API Key
+  # Get it from: https://console.anthropic.com/
+  api_key: ${ANTHROPIC_API_KEY}
+
+  # Claude model to use
+  model: "claude-sonnet-4-6"
+
+  # Headless mode timeout (seconds)
+  headless_timeout: 600
+
+# Branch Management Strategy
+branch_strategy:
+  # Branch naming template
+  # Available variables: {agent_type}, {issue_id}, {slug}
+  prefix_template: "agent/{agent_type}/{issue_id}"
+
+  # Maximum parallel agents
+  max_parallel_agents: 5
+
+  # Auto-delete merged branches
+  auto_cleanup: true
+
+# Workspace Configuration
+workspace_root: "."
+docs_dir: "docs"
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR
+  format: "json"  # text, json

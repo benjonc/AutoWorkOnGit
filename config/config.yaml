@@ -1,0 +1,20 @@
+# Configuration File
+# Please edit this file with your actual values
+
+github:
+  token: ${GITHUB_TOKEN}
+  repo_owner: "benjonc"
+  repo_name: "AutoWorkOnGit"
+  base_branch: "main"
+
+claude:
+  api_key: ${ANTHROPIC_API_KEY}
+  model: "claude-sonnet-4-6"
+  headless_timeout: 600
+
+branch_strategy:
+  max_parallel_agents: 5
+  auto_cleanup: true
+
+workspace_root: "."
+docs_dir: "docs"
